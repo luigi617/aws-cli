@@ -283,7 +283,10 @@ class AWSCLIEntryPoint:
             autoprompt_driver = AutoPromptDriver(driver)
             autoprompt_driver.inject_silence_param_error_msg_handler(driver)
             rc = self._run_driver(driver, args, prompt_mode='off')
-            if rc == PARAM_VALIDATION_ERROR_RC:
+            if (
+                rc == PARAM_VALIDATION_ERROR_RC
+                and autoprompt_driver.can_prompt_to_fix_param_error
+            ):
                 args = autoprompt_driver.prompt_for_args(args)
                 driver = create_clidriver(args)
                 rc = self._run_driver(driver, args, prompt_mode='partial')
@@ -961,6 +964,18 @@ class ServiceOperation:
                 # method of the operation caller. It represents the return
                 # code of the operation.
                 return override
+        elif getattr(parsed_globals, 'cli_dry_run', False) is True:
+            # Imported here because the dry run module depends on this one.
+            from awscli.customizations.dryrun import invoke_dry_run
+
+            return invoke_dry_run(
+                self._session,
+                ' '.join(['aws'] + self.lineage_names),
+                self._operation_model,
+                self._operation_caller,
+                call_parameters,
+                parsed_globals,
+            )
         else:
             # No override value was supplied.
             return self._operation_caller.invoke(

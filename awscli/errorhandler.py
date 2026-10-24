@@ -35,6 +35,7 @@ from awscli.constants import (
 )
 from awscli.customizations.exceptions import (
     ConfigurationError,
+    DryRunNotSupportedError,
     ParamValidationError,
 )
 from awscli.errorformat import write_error
@@ -248,7 +249,17 @@ class ParamValidationErrorsHandler(FilteredExceptionHandler):
 
 
 class SilenceParamValidationMsgErrorHandler(ParamValidationErrorsHandler):
+    def __init__(self, session=None):
+        super().__init__(session)
+        # Whether prompting for parameters could fix the error handled.
+        self.can_prompt_to_fix = True
+
     def _do_handle_exception(self, exception, stdout, stderr, **kwargs):
+        if isinstance(exception, DryRunNotSupportedError):
+            # No parameter value can fix this, so the error is not silenced
+            # and is left for the next handler to display.
+            self.can_prompt_to_fix = False
+            return None
         return self.RC
 
 

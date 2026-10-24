@@ -22,6 +22,7 @@ class AutoPromptDriver:
         self._prompter = prompter
         self._session = driver.session
         self._driver = driver
+        self._silence_handler = None
         if self._completion_source is None:
             self._completion_source = create_autocompleter(
                 driver=self._driver, response_filter=fuzzy_filter
@@ -36,9 +37,13 @@ class AutoPromptDriver:
         return self._prompter
 
     def inject_silence_param_error_msg_handler(self, driver):
-        driver.error_handler.inject_handler(
-            0, SilenceParamValidationMsgErrorHandler()
-        )
+        self._silence_handler = SilenceParamValidationMsgErrorHandler()
+        driver.error_handler.inject_handler(0, self._silence_handler)
+
+    @property
+    def can_prompt_to_fix_param_error(self):
+        handler = self._silence_handler
+        return handler is None or handler.can_prompt_to_fix
 
     def prompt_for_args(self, args):
         return self.prompter.prompt_for_values(args)

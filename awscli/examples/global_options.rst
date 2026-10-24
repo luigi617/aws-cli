@@ -116,3 +116,7 @@
   *   enhanced
   
   
+``--cli-dry-run`` (boolean)
+  
+  Validate the command and build the request for a single AWS API operation, print it, and exit without signing or sending it. The request is printed as JSON along with ``ExpectedOutput`` , the output a successful call would produce. Options such as ``--query`` and ``--output`` apply to ``ExpectedOutput`` , which is generated from placeholder response values. JSON and YAML output is shown as data, text output as a list of rows of columns, table output as a list of lines, and it is null if nothing would be printed. This is unrelated to the operation-level ``--dry-run`` parameter some services provide, which is sent to the service. High-level and custom commands (for example ``aws s3 cp`` ) are not supported; use their own options such as ``--dryrun`` . Parameter values that are modeled as sensitive, or whose names indicate a secret such as a password or token, are redacted. The request is shown before signing and before endpoint discovery, so for services that use endpoint discovery the URL can differ from the one used. Presigned URLs that would be included in the request are not generated.
+  

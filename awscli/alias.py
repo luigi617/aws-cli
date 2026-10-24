@@ -19,6 +19,7 @@ from botocore.configloader import raw_config_parse
 
 from awscli.commands import CLICommand
 from awscli.compat import compat_shell_quote
+from awscli.customizations.exceptions import DryRunNotSupportedError
 from awscli.utils import emit_top_level_args_parsed_event
 
 LOG = logging.getLogger(__name__)
@@ -414,6 +415,13 @@ class ExternalAliasCommand(BaseAliasCommand):
         self._invoker = invoker
 
     def __call__(self, args, parsed_globals):
+        if getattr(parsed_globals, 'cli_dry_run', False) is True:
+            # The shell command is opaque to the CLI, so there is no
+            # request that could be printed in its place.
+            raise DryRunNotSupportedError(
+                f"--cli-dry-run is not supported for external alias "
+                f"'{self._alias_name}'."
+            )
         command_components = [self._alias_value[1:]]
         command_components.extend(
             compat_shell_quote(a, shell=True) for a in args

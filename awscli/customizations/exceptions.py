@@ -20,6 +20,15 @@ class ParamValidationError(Exception):
     """
 
 
+class DryRunNotSupportedError(ParamValidationError):
+    """The command cannot be run with ``--cli-dry-run``. Indicates RC 252.
+
+    This exception indicates that ``--cli-dry-run`` was provided for a command
+    that does not map to a single AWS API operation, or that the command
+    attempted to make an API call other than the one being dry run.
+    """
+
+
 class ConfigurationError(Exception):
     """CLI configuration is an invalid state. Indicates RC 253.
 

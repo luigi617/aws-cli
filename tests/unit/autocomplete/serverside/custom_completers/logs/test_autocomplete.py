@@ -30,7 +30,7 @@ class TestGroupNameCompleter(unittest.TestCase):
                 },
                 'arg_names': {
                     '': {
-                        'aws': ['region', 'profile'],
+                        'aws': ['region', 'profile', 'cli-dry-run'],
                     },
                     'aws.logs': {
                         'tail': ['group_name'],
@@ -51,6 +51,15 @@ class TestGroupNameCompleter(unittest.TestCase):
                             'region': (
                                 'region',
                                 'string',
+                                'aws',
+                                '',
+                                None,
+                                False,
+                                False,
+                            ),
+                            'cli-dry-run': (
+                                'cli-dry-run',
+                                'boolean',
                                 'aws',
                                 '',
                                 None,
@@ -105,6 +114,11 @@ class TestGroupNameCompleter(unittest.TestCase):
         parsed = self.parser.parse('aws logs tail my')
         results = self.completer.complete(parsed)
         self.assertEqual(results, [CompletionResult('mygroup', -2)])
+
+    def test_does_not_call_aws_with_cli_dry_run(self):
+        parsed = self.parser.parse('aws --cli-dry-run logs tail ')
+        self.assertIsNone(self.completer.complete(parsed))
+        self.mock_create_client.create_client.assert_not_called()
 
     def test_complete_group_name_handles_errors(self):
         self.mock_client.describe_log_groups.side_effect = Exception(

@@ -48,7 +48,12 @@ class TestServerSideAutocompleter(unittest.TestCase):
                 },
                 'arg_names': {
                     '': {
-                        'aws': ['region', 'endpoint-url', 'profile'],
+                        'aws': [
+                            'region',
+                            'endpoint-url',
+                            'profile',
+                            'cli-dry-run',
+                        ],
                     },
                     'aws.iam': {
                         'delete-user-policy': ['policy-name'],
@@ -79,6 +84,15 @@ class TestServerSideAutocompleter(unittest.TestCase):
                             'profile': (
                                 'profile',
                                 'string',
+                                'aws',
+                                '',
+                                None,
+                                False,
+                                False,
+                            ),
+                            'cli-dry-run': (
+                                'cli-dry-run',
+                                'boolean',
                                 'aws',
                                 '',
                                 None,
@@ -216,6 +230,13 @@ class TestServerSideAutocompleter(unittest.TestCase):
         self.mock_create_client.create_client.assert_called_with(
             'iam', parsed_profile='profile1', parsed_region='us-west-2'
         )
+
+    def test_does_not_call_aws_with_cli_dry_run(self):
+        parsed = self.parser.parse(
+            'aws iam delete-user-policy --cli-dry-run --policy-name '
+        )
+        self.assertIsNone(self.completer.complete(parsed))
+        self.mock_create_client.create_client.assert_not_called()
 
 
 class TestLazyClientCreator(unittest.TestCase):

@@ -860,6 +860,7 @@ PLUGIN_REGISTRY = {
     'top-level-args-parsed': [
         ('awscli.customizations.globalargs', 'register_parse_global_args'),
         ('awscli.customizations.cloudfront', 'register'),
+        ('awscli.customizations.dryrun', 'register_dry_run'),
     ],
 }
 

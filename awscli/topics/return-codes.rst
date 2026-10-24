@@ -33,6 +33,8 @@ of a CLI command:
 
 * ``252`` -- Command syntax was invalid, an unknown parameter was provided, or
   a parameter value was incorrect and prevented the command from running.
+  This is also returned when ``--cli-dry-run`` is used with a command that
+  does not support it.
 
 * ``253`` -- The system environment or configuration was invalid. While the
   command provided may be syntactically valid, missing configuration or

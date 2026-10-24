@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "category": "``cli``",
+  "description": "Add global ``--cli-dry-run`` option that validates and prints the request an API operation would send, and the output a successful call would produce, without signing or sending it. Fixes `#1965 <https://github.com/aws/aws-cli/issues/1965>`__"
+}

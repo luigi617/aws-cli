@@ -18,7 +18,10 @@ from awscli.arguments import CustomArgument, create_argument_model_from_schema
 from awscli.bcdoc import docevents
 from awscli.clidocs import OperationDocumentEventHandler
 from awscli.commands import CLICommand
-from awscli.customizations.exceptions import ParamValidationError
+from awscli.customizations.exceptions import (
+    DryRunNotSupportedError,
+    ParamValidationError,
+)
 from awscli.help import HelpCommand
 from awscli.schema import SchemaTransformer
 from awscli.utils import add_command_lineage_to_user_agent_extra
@@ -214,11 +217,29 @@ class BasicCommand(CLICommand):
                         ),
                     )
                 )
+            self._raise_if_cli_dry_run_unsupported(parsed_globals)
             rc = self._run_main(parsed_args, parsed_globals)
             if rc is None:
                 return 0
             else:
                 return rc
+
+    def _raise_if_cli_dry_run_unsupported(self, parsed_globals):
+        # Custom commands generally make zero or several API calls, so they
+        # cannot be represented by the single request that ``--cli-dry-run``
+        # prints, so they are always refused. Compare against True so that
+        # parsed globals objects that do not define the option, e.g. when
+        # invoked programmatically, are allowed.
+        if getattr(parsed_globals, 'cli_dry_run', False) is not True:
+            return
+        command = ' '.join(['aws'] + self.lineage_names)
+        msg = (
+            f"--cli-dry-run is not supported for '{command}'. It is only "
+            f"supported for commands that call a single AWS API operation."
+        )
+        if 'dryrun' in self.arg_table:
+            msg += f" Use '{command} --dryrun' instead."
+        raise DryRunNotSupportedError(msg)
 
     def _validate_value_against_schema(self, model, value):  # noqa: F811
         validate_parameters(value, model)

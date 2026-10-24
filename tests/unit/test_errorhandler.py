@@ -30,6 +30,7 @@ from awscli.arguments import UnknownArgumentError
 from awscli.autoprompt.factory import PrompterKeyboardInterrupt
 from awscli.customizations.exceptions import (
     ConfigurationError,
+    DryRunNotSupportedError,
     ParamValidationError,
 )
 
@@ -113,6 +114,18 @@ def test_cli_error_handling_chain_injection(case):
         0, errorhandler.SilenceParamValidationMsgErrorHandler()
     )
     _assert_rc_and_error_message(case, error_handler)
+
+
+def test_cli_error_handling_chain_injection_shows_dry_run_error():
+    error_handler = errorhandler.construct_cli_error_handlers_chain()
+    silence_handler = errorhandler.SilenceParamValidationMsgErrorHandler()
+    error_handler.inject_handler(0, silence_handler)
+    assert silence_handler.can_prompt_to_fix
+    case = Case(
+        DryRunNotSupportedError('not supported'), 252, 'not supported', ''
+    )
+    _assert_rc_and_error_message(case, error_handler)
+    assert not silence_handler.can_prompt_to_fix
 
 
 @pytest.mark.parametrize(

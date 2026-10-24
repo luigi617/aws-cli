@@ -16,7 +16,10 @@ import pytest
 
 from awscli.autoprompt import core
 from awscli.clidriver import create_clidriver
-from awscli.customizations.exceptions import ParamValidationError
+from awscli.customizations.exceptions import (
+    DryRunNotSupportedError,
+    ParamValidationError,
+)
 from awscli.testutils import mock, unittest
 
 
@@ -27,6 +30,18 @@ class TestCLIAutoPrompt(unittest.TestCase):
         self.prompt_driver = core.AutoPromptDriver(
             self.driver, prompter=self.prompter
         )
+
+    def test_can_prompt_to_fix_param_error_by_default(self):
+        self.assertTrue(self.prompt_driver.can_prompt_to_fix_param_error)
+
+    def test_cannot_prompt_to_fix_dry_run_not_supported_error(self):
+        self.prompt_driver.inject_silence_param_error_msg_handler(self.driver)
+        handler = self.driver.error_handler.inject_handler.call_args[0][1]
+        self.assertTrue(self.prompt_driver.can_prompt_to_fix_param_error)
+        handler.handle_exception(
+            DryRunNotSupportedError('not supported'), None, None
+        )
+        self.assertFalse(self.prompt_driver.can_prompt_to_fix_param_error)
 
 
 class TestAutoPrompter(unittest.TestCase):

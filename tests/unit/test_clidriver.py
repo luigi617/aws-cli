@@ -1196,6 +1196,16 @@ class TestAWSCLIEntryPoint(unittest.TestCase):
         self.assertEqual(self.create_clidriver.call_count, 2)
         self.assertEqual(rc, 252)
 
+    def test_not_recreate_driver_in_partial_mode_on_unfixable_err(self):
+        self.resolve_auto_prompt_mode.return_value = 'on-partial'
+        self.driver.main.return_value = 252
+        self.prompt_driver.can_prompt_to_fix_param_error = False
+        entry_point = awscli.clidriver.AWSCLIEntryPoint()
+        rc = entry_point.main([])
+        self.assertEqual(self.create_clidriver.call_count, 1)
+        self.prompt_driver.prompt_for_args.assert_not_called()
+        self.assertEqual(rc, 252)
+
     def test_not_recreate_driver_in_partial_mode_on_success(self):
         self.resolve_auto_prompt_mode.return_value = 'on-partial'
         self.driver.main.return_value = 0

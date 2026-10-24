@@ -19,6 +19,12 @@ from awscli.autocomplete.filters import startswith_filter
 LOG = logging.getLogger(__name__)
 
 
+def _is_cli_dry_run(parsed):
+    # Server-side completions call AWS, which --cli-dry-run promises not to
+    # do, so they are not offered when the flag is on the command line.
+    return 'cli-dry-run' in parsed.global_params
+
+
 class ServerSideCompleter(BaseCompleter):
     def __init__(
         self, completion_lookup, client_creator, response_filter=None
@@ -48,6 +54,8 @@ class ServerSideCompleter(BaseCompleter):
 
         """
         if parsed.unparsed_items or parsed.current_fragment is None:
+            return
+        if _is_cli_dry_run(parsed):
             return
         # This completer only applies to option values.  If the current fragment
         # we're on isn't an option value we can short circuit and return.
@@ -135,7 +143,7 @@ class BaseCustomServerSideCompleter(ServerSideCompleter):
             self._client_creator = LazyClientCreator()
 
     def complete(self, parsed):
-        if not self._is_value_for_param(parsed):
+        if not self._is_value_for_param(parsed) or _is_cli_dry_run(parsed):
             return
         remote_results = self._get_remote_results(parsed)
         completion_results = []
