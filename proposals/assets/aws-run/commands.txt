@@ -1,0 +1,8 @@
+# Example commands file for "aws run". Each line is one AWS CLI command
+# written without the leading "aws". Lines starting with # are comments.
+sts get-caller-identity
+
+ec2 describe-instances --region us-east-1
+ec2 describe-vpcs --region us-east-1
+ec2 describe-vpcs --region us-east-1 --query 'Vpcs[].VpcId' --output text
+s3api list-buckets

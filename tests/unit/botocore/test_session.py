@@ -18,6 +18,7 @@ import shutil
 import tempfile
 
 import botocore.config
+import botocore.httpsession
 import botocore.exceptions
 import botocore.loaders
 import botocore.session
@@ -712,6 +713,33 @@ class TestCreateClient(BaseSessionTest):
 
 
 class TestSessionComponent(BaseSessionTest):
+    def test_default_http_session_cls(self):
+        self.assertIs(
+            self.session.get_component('http_session_cls'),
+            botocore.httpsession.URLLib3Session,
+        )
+
+    def test_registered_http_session_cls_is_used_for_endpoints(self):
+        http_session = botocore.httpsession.URLLib3Session()
+        calls = []
+
+        def http_session_factory(**kwargs):
+            calls.append(kwargs)
+            return http_session
+
+        self.session.register_component(
+            'http_session_cls', http_session_factory
+        )
+        client = self.session.create_client(
+            'sts',
+            'us-west-2',
+            aws_access_key_id='foo',
+            aws_secret_access_key='bar',
+        )
+        self.assertIs(client._endpoint.http_session, http_session)
+        self.assertEqual(len(calls), 1)
+        self.assertIn('verify', calls[0])
+
     def test_internal_component(self):
         component = object()
         self.session._register_internal_component('internal', component)

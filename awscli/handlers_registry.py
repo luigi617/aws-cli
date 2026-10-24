@@ -684,6 +684,7 @@ PLUGIN_REGISTRY = {
         ('awscli.customizations.devcommands', 'register_dev_commands'),
         ('awscli.customizations.login', 'register_login_cmds'),
         ('awscli.customizations.update', 'register_update_command'),
+        ('awscli.customizations.run', 'register_run_command'),
     ],
     'building-command-table.polly': [
         ('awscli.customizations.removals', 'register_removals')
@@ -924,6 +925,12 @@ MAIN_COMMAND_TABLE_OPS: list[
         'update',
         'awscli.customizations.update',
         'UpdateCommand',
+    ),
+    (
+        CommandTableOp.ADD,
+        'run',
+        'awscli.customizations.run',
+        'RunCommand',
     ),
     (
         CommandTableOp.RENAME,

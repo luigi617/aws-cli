@@ -84,6 +84,7 @@ class ClientCreator:
         config_store=None,
         user_agent_creator=None,
         auth_token_resolver=None,
+        http_session_cls=None,
     ):
         self._loader = loader
         self._endpoint_resolver = endpoint_resolver
@@ -98,6 +99,7 @@ class ClientCreator:
         self._config_store = config_store
         self._user_agent_creator = user_agent_creator
         self._auth_token_resolver = auth_token_resolver
+        self._http_session_cls = http_session_cls
 
     def create_client(
         self,
@@ -393,6 +395,7 @@ class ClientCreator:
             self._exceptions_factory,
             config_store=self._config_store,
             user_agent_creator=self._user_agent_creator,
+            http_session_cls=self._http_session_cls,
         )
         return args_creator.get_client_args(
             service_model,

@@ -27,6 +27,7 @@ import warnings
 import botocore.client
 import botocore.configloader
 import botocore.credentials
+import botocore.httpsession
 import botocore.tokens
 from botocore import (
     UNSIGNED,
@@ -148,6 +149,7 @@ class Session:
         self._register_endpoint_resolver()
         self._register_event_emitter()
         self._register_response_parser_factory()
+        self._register_http_session_cls()
         self._register_exceptions_factory()
         self._register_config_store()
         self._register_monitor()
@@ -189,6 +191,14 @@ class Session:
 
         self._internal_components.lazy_register_component(
             'endpoint_resolver', create_default_resolver
+        )
+
+    def _register_http_session_cls(self):
+        # Called with the HTTP settings of each new endpoint and returns the
+        # HTTP session it sends requests with. A different callable can be
+        # registered, e.g. to share connection pools between clients.
+        self._components.register_component(
+            'http_session_cls', botocore.httpsession.URLLib3Session
         )
 
     def _register_response_parser_factory(self):
@@ -946,6 +956,7 @@ class Session:
             config_store,
             user_agent_creator=user_agent_creator,
             auth_token_resolver=self.get_auth_token,
+            http_session_cls=self.get_component('http_session_cls'),
         )
         client = client_creator.create_client(
             service_name=service_name,

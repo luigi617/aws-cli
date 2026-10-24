@@ -32,6 +32,7 @@ from botocore.configprovider import (
 from botocore.context import start_as_current_context
 from botocore.exceptions import ProfileNotFound
 from botocore.history import get_global_history_recorder
+from botocore.loaders import create_loader
 
 from awscli import __version__
 from awscli.alias import AliasCommandInjector, AliasLoader
@@ -97,6 +98,10 @@ HISTORY_RECORDER = get_global_history_recorder()
 METADATA_FILENAME = 'metadata.json'
 INSTALL_FILENAME = 'install.json'
 _NO_AUTO_PROMPT_ARGS = ['help', '--version']
+# Top level commands that must never be auto-prompted. ``run`` executes a
+# batch of commands, so re-prompting and re-running it would repeat lines
+# that may have already modified resources.
+_NO_AUTO_PROMPT_COMMANDS = ['run']
 _CLI_AUTO_PROMPT_OPTION = '--cli-auto-prompt'
 _NO_CLI_AUTO_PROMPT_OPTION = '--no-cli-auto-prompt'
 # Don't remove this line.  The idna encoding
@@ -116,7 +121,14 @@ def main():
         return AWSCLIEntryPoint().main(sys.argv[1:])
 
 
-def create_clidriver(args=None, event_hooks=None):
+def create_clidriver(args=None, event_hooks=None, data_loaders=None):
+    """Create a CLIDriver with a new botocore session.
+
+    :param data_loaders: An optional dict, mapping a resolved ``data_path``
+        to a botocore ``Loader``. When provided, the new session uses (and
+        populates) these loaders instead of creating its own, so that
+        multiple drivers in the same process share loaded model files.
+    """
     debug = None
     if args is not None:
         parser = FirstPassGlobalArgParser()
@@ -127,6 +139,8 @@ def create_clidriver(args=None, event_hooks=None):
             main_command_table_ops=MAIN_COMMAND_TABLE_OPS
         )
     session = botocore.session.Session(event_hooks=event_hooks)
+    if data_loaders is not None:
+        _share_data_loader(session, data_loaders)
     _set_user_agent_for_session(session)
     load_plugins(
         session.full_config.get('plugins', {}),
@@ -137,6 +151,41 @@ def create_clidriver(args=None, event_hooks=None):
         session=session, error_handler=error_handlers_chain, debug=debug
     )
     return driver
+
+
+def _share_data_loader(session, data_loaders):
+    # Loaders only read model files and cache the results, so they can be
+    # shared between sessions that resolve to the same data_path.
+    def get_shared_loader():
+        data_path = session.get_config_variable('data_path')
+        if data_path not in data_loaders:
+            data_loaders[data_path] = create_loader(data_path)
+        return data_loaders[data_path]
+
+    session.lazy_register_component('data_loader', get_shared_loader)
+
+
+def get_command_name(args, cli_options):
+    """Return the top level command name from a list of CLI arguments.
+
+    :param args: The CLI arguments, with the 'aws' removed.
+    :param cli_options: The ``options`` from the CLI data (``cli.json``),
+        used to know which global options consume a value.
+    """
+    value_options = {
+        f'--{name}'
+        for name, option in cli_options.items()
+        if 'action' not in option
+    }
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+        elif arg.startswith('-'):
+            skip_next = arg in value_options
+        else:
+            return arg
+    return None
 
 
 def validate_auto_prompt_args_are_mutually_exclusive(args):
@@ -271,6 +320,12 @@ class AWSCLIEntryPoint:
         if driver is None:
             driver = create_clidriver(args)
         auto_prompt_mode = resolve_auto_prompt_mode(args, driver.session)
+        if auto_prompt_mode != 'off':
+            command_name = get_command_name(
+                args, driver.session.get_data('cli').get('options', {})
+            )
+            if command_name in _NO_AUTO_PROMPT_COMMANDS:
+                auto_prompt_mode = 'off'
         if auto_prompt_mode == 'on':
             from awscli.autoprompt.core import AutoPromptDriver
 
@@ -1067,7 +1122,9 @@ class CLIOperationCaller:
 
     def __init__(self, session):
         self._session = session
-        self._output_stream_factory = OutputStreamFactory(session)
+        # Created on first use, as one caller is created for every operation
+        # in a command table and the factory copies the environment.
+        self._output_stream_factory = None
 
     def invoke(self, service_name, operation_name, parameters, parsed_globals):
         """Invoke an operation and format the response.
@@ -1122,5 +1179,7 @@ class CLIOperationCaller:
             output = self._session.get_config_variable('output')
 
         formatter = get_formatter(output, parsed_globals)
+        if self._output_stream_factory is None:
+            self._output_stream_factory = OutputStreamFactory(self._session)
         with self._output_stream_factory.get_output_stream() as stream:
             formatter(command_name, response, stream)

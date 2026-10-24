@@ -45,6 +45,7 @@ from awscli.clidriver import (
     ServiceOperation,
     construct_cli_error_handlers_chain,
     create_clidriver,
+    get_command_name,
     get_distribution_source,
     resolve_auto_prompt_mode,
     validate_auto_prompt_args_are_mutually_exclusive,
@@ -1180,7 +1181,11 @@ class TestAWSCLIEntryPoint(unittest.TestCase):
         self.create_clidriver = self.crete_driver_patch.start()
         self.resolve_auto_prompt_mode = self.resolve_mode_patch.start()
         self.create_clidriver.side_effect = _create_fake_cli_driver
+        # The entry point reads the global options from the CLI data to
+        # find the command name.
+        self.driver.session.get_data.return_value = GET_DATA['cli']
         self.prompt_driver = mock.Mock()
+        self.prompt_driver_class = prompt_driver_class
         prompt_driver_class.return_value = self.prompt_driver
 
     def tearDown(self):
@@ -1259,6 +1264,234 @@ class TestAWSCLIEntryPoint(unittest.TestCase):
         entry_point = awscli.clidriver.AWSCLIEntryPoint()
         entry_point.main([])
         self.assertEqual(self.driver.session.user_agent_extra, 'md/prompt#off')
+
+    def test_run_command_is_never_auto_prompted_in_on_mode(self):
+        self.resolve_auto_prompt_mode.return_value = 'on'
+        self.driver.main.return_value = 0
+        entry_point = awscli.clidriver.AWSCLIEntryPoint()
+        rc = entry_point.main(['run', 'commands.txt'])
+        self.assertEqual(rc, 0)
+        self.prompt_driver_class.assert_not_called()
+        self.prompt_driver.prompt_for_args.assert_not_called()
+        self.driver.main.assert_called_once_with(['run', 'commands.txt'])
+        self.assertEqual(self.driver.session.user_agent_extra, 'md/prompt#off')
+
+    def test_run_command_is_never_auto_prompted_in_partial_mode(self):
+        self.resolve_auto_prompt_mode.return_value = 'on-partial'
+        self.driver.main.return_value = 252
+        entry_point = awscli.clidriver.AWSCLIEntryPoint()
+        rc = entry_point.main(['run', 'commands.txt'])
+        self.assertEqual(rc, 252)
+        self.prompt_driver_class.assert_not_called()
+        self.prompt_driver.prompt_for_args.assert_not_called()
+        # Not re-run after a param validation error.
+        self.assertEqual(self.create_clidriver.call_count, 1)
+        self.assertEqual(self.driver.main.call_count, 1)
+
+    def test_run_command_after_global_options_is_not_auto_prompted(self):
+        self.resolve_auto_prompt_mode.return_value = 'on'
+        self.driver.main.return_value = 0
+        entry_point = awscli.clidriver.AWSCLIEntryPoint()
+        args = ['--debug', '--region', 'us-west-2', 'run', 'commands.txt']
+        entry_point.main(args)
+        self.prompt_driver_class.assert_not_called()
+        self.driver.main.assert_called_once_with(args)
+
+    def test_run_as_option_value_is_still_auto_prompted(self):
+        self.resolve_auto_prompt_mode.return_value = 'on'
+        self.prompt_driver.prompt_for_args.return_value = ['s3', 'ls']
+        self.driver.main.return_value = 0
+        entry_point = awscli.clidriver.AWSCLIEntryPoint()
+        entry_point.main(['--profile', 'run', 's3', 'ls'])
+        self.prompt_driver.prompt_for_args.assert_called_once()
+
+
+class TestAutoPromptForcedOffForRun(unittest.TestCase):
+    # Uses a real driver and auto prompt mode resolution.
+    def setUp(self):
+        self.environ = {
+            'AWS_DATA_PATH': os.environ['AWS_DATA_PATH'],
+            'AWS_CONFIG_FILE': '',
+            'AWS_SHARED_CREDENTIALS_FILE': '',
+        }
+        self.environ_patch = mock.patch('os.environ', self.environ)
+        self.environ_patch.start()
+        self.prompt_patch = mock.patch(
+            'awscli.autoprompt.core.AutoPromptDriver'
+        )
+        self.prompt_driver_class = self.prompt_patch.start()
+
+    def tearDown(self):
+        self.prompt_patch.stop()
+        self.environ_patch.stop()
+
+    def _run(self, args, config_value):
+        driver = create_clidriver(args)
+        driver.session.set_config_variable('cli_auto_prompt', config_value)
+        with mock.patch.object(driver, 'main', return_value=0) as main:
+            rc = awscli.clidriver.AWSCLIEntryPoint(driver).main(args)
+        return rc, main
+
+    def test_config_on(self):
+        rc, main = self._run(['run', 'commands.txt'], 'on')
+        self.assertEqual(rc, 0)
+        self.prompt_driver_class.assert_not_called()
+        main.assert_called_once_with(['run', 'commands.txt'])
+
+    def test_config_on_partial(self):
+        rc, main = self._run(['run', 'commands.txt'], 'on-partial')
+        self.assertEqual(rc, 0)
+        self.prompt_driver_class.assert_not_called()
+        main.assert_called_once_with(['run', 'commands.txt'])
+
+    def test_other_commands_still_prompted(self):
+        self.prompt_driver_class.return_value.prompt_for_args.return_value = [
+            's3',
+            'ls',
+        ]
+        self._run(['s3', 'ls'], 'on')
+        self.prompt_driver_class.assert_called_once()
+
+
+class TestGetCommandName(unittest.TestCase):
+    def setUp(self):
+        self.options = GET_DATA['cli']['options']
+
+    def test_simple(self):
+        self.assertEqual(get_command_name(['s3', 'ls'], self.options), 's3')
+
+    def test_empty(self):
+        self.assertIsNone(get_command_name([], self.options))
+
+    def test_only_options(self):
+        self.assertIsNone(
+            get_command_name(['--debug', '--region', 'x'], self.options)
+        )
+
+    def test_value_option_missing_value(self):
+        self.assertIsNone(get_command_name(['--region'], self.options))
+
+    def test_skips_flag_options(self):
+        self.assertEqual(
+            get_command_name(
+                ['--debug', '--no-paginate', 'run'], self.options
+            ),
+            'run',
+        )
+
+    def test_skips_value_options(self):
+        self.assertEqual(
+            get_command_name(
+                ['--region', 'us-west-2', '--profile', 'dev', 'run', 'f'],
+                self.options,
+            ),
+            'run',
+        )
+
+    def test_value_of_option_is_not_command(self):
+        self.assertEqual(
+            get_command_name(['--profile', 'run', 's3', 'ls'], self.options),
+            's3',
+        )
+
+    def test_unknown_options_are_treated_as_flags(self):
+        self.assertEqual(
+            get_command_name(['--unknown', 's3', 'ls'], self.options), 's3'
+        )
+
+    def test_with_real_cli_options(self):
+        driver = create_clidriver()
+        options = driver.session.get_data('cli')['options']
+        self.assertEqual(
+            get_command_name(
+                [
+                    '--cli-read-timeout',
+                    '5',
+                    '--no-sign-request',
+                    '--cli-binary-format',
+                    'raw-in-base64-out',
+                    '--debug',
+                    'run',
+                    'f',
+                ],
+                options,
+            ),
+            'run',
+        )
+        self.assertEqual(
+            get_command_name(['--output', 'run', 'x'], options), 'x'
+        )
+
+
+class TestCreateCLIDriverDataLoaders(unittest.TestCase):
+    def setUp(self):
+        self.environ = {
+            'AWS_DATA_PATH': os.environ['AWS_DATA_PATH'],
+            'AWS_CONFIG_FILE': '',
+            'AWS_SHARED_CREDENTIALS_FILE': '',
+        }
+        self.environ_patch = mock.patch('os.environ', self.environ)
+        self.environ_patch.start()
+
+    def tearDown(self):
+        self.environ_patch.stop()
+
+    def test_without_data_loaders_each_session_has_own_loader(self):
+        first = create_clidriver()
+        second = create_clidriver()
+        self.assertIsNot(
+            first.session.get_component('data_loader'),
+            second.session.get_component('data_loader'),
+        )
+
+    def test_shared_loader_created_once_and_reused(self):
+        data_loaders = {}
+        with mock.patch(
+            'awscli.clidriver.create_loader',
+            wraps=awscli.clidriver.create_loader,
+        ) as create_loader:
+            first = create_clidriver(['s3', 'ls'], data_loaders=data_loaders)
+            second = create_clidriver(['s3', 'ls'], data_loaders=data_loaders)
+            first_loader = first.session.get_component('data_loader')
+            second_loader = second.session.get_component('data_loader')
+        self.assertIsNot(first.session, second.session)
+        self.assertIs(first_loader, second_loader)
+        self.assertEqual(create_loader.call_count, 1)
+        data_path = first.session.get_config_variable('data_path')
+        self.assertEqual(data_loaders, {data_path: first_loader})
+
+    def test_seeded_loader_is_used(self):
+        driver = create_clidriver()
+        data_path = driver.session.get_config_variable('data_path')
+        loader = mock.sentinel.loader
+        data_loaders = {data_path: loader}
+        with mock.patch('awscli.clidriver.create_loader') as create_loader:
+            new = create_clidriver(data_loaders=data_loaders)
+            self.assertIs(new.session.get_component('data_loader'), loader)
+        create_loader.assert_not_called()
+
+    def test_different_data_path_gets_different_loader(self):
+        data_loaders = {}
+        first = create_clidriver(data_loaders=data_loaders)
+        first_loader = first.session.get_component('data_loader')
+        self.environ['AWS_DATA_PATH'] = (
+            self.environ['AWS_DATA_PATH'] + os.pathsep + '/tmp/other-models'
+        )
+        second = create_clidriver(data_loaders=data_loaders)
+        second_loader = second.session.get_component('data_loader')
+        self.assertIsNot(first_loader, second_loader)
+        self.assertEqual(len(data_loaders), 2)
+
+    def test_shared_loader_loads_models(self):
+        data_loaders = {}
+        driver = create_clidriver(data_loaders=data_loaders)
+        client = driver.session.create_client(
+            'sts',
+            region_name='us-east-1',
+            aws_access_key_id='a',
+            aws_secret_access_key='b',
+        )
+        self.assertEqual(client.meta.service_model.service_name, 'sts')
 
 
 class TextCreateCLIDriver(unittest.TestCase):

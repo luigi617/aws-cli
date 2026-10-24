@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "category": "``run``",
+  "description": "Adds the ``run`` command, which runs AWS CLI commands from a file, one command per line, sequentially in a single AWS CLI process."
+}

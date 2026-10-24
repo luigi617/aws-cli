@@ -25,6 +25,7 @@ import botocore.exceptions
 import botocore.serialize
 from botocore.config import Config
 from botocore.endpoint import EndpointCreator
+from botocore.httpsession import URLLib3Session
 from botocore.regions import EndpointResolverBuiltins as EPRBuiltins
 from botocore.regions import EndpointRulesetResolver
 from botocore.signers import RequestSigner
@@ -68,8 +69,10 @@ class ClientArgsCreator:
         exceptions_factory,
         config_store,
         user_agent_creator=None,
+        http_session_cls=None,
     ):
         self._event_emitter = event_emitter
+        self._http_session_cls = http_session_cls
         self._response_parser_factory = response_parser_factory
         self._loader = loader
         self._exceptions_factory = exceptions_factory
@@ -135,6 +138,9 @@ class ClientArgsCreator:
         config_kwargs['s3'] = s3_config
         new_config = Config(**config_kwargs)
         endpoint_creator = EndpointCreator(event_emitter)
+        endpoint_kwargs = {}
+        if self._http_session_cls not in (None, URLLib3Session):
+            endpoint_kwargs['http_session_cls'] = self._http_session_cls
 
         endpoint = endpoint_creator.create_endpoint(
             service_model,
@@ -148,6 +154,7 @@ class ClientArgsCreator:
             socket_options=socket_options,
             client_cert=new_config.client_cert,
             proxies_config=new_config.proxies_config,
+            **endpoint_kwargs,
         )
 
         serializer = botocore.serialize.create_serializer(
